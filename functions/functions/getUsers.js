@@ -1,31 +1,84 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const constants = require("../constants/constands");
+const getDistance = require("./getDistance");
 
-exports.getUsers = functions.https.onRequest((req, response) => {
+module.exports = functions.https.onRequest(async (req, response) => {
   const db = admin.firestore();
-  const usersRef = db.collection("users");
-  let request = usersRef.get();
+  const reqData = req.body?.data;
+  const DBRef = db.collection(
+    reqData?.type === "objects" ? "objects" : "users",
+  );
+  const arr = [];
+  const filter = [];
 
-  if (Object.keys(req.body).length) {
-    request = usersRef.where(
-        Object.keys(req.body.data.search)[0],
-        "==",
-        req.body.data.search[Object.keys(req.body.data.search)[0]]
-    ).get();
+  const request = await DBRef.get();
+  for (const doc of request.docs) {
+    arr.push(doc.data());
   }
 
-  request.then((snapshot) => {
-    const arr = [];
-    snapshot.forEach((doc) => arr.push(doc.data()));
+  if (reqData?.location) {
+    arr.filter((user) => {
+      const validDistance = getDistance(
+          reqData.location.lat,
+          reqData.location.lng,
+          user.location?.lat,
+          user.location?.lng,
+          reqData.location.unit,
+      );
+      if (validDistance) {
+        filter.push(user);
+      }
+    });
+    response.json({
+      "status": constants.RESPONSE_TYPES.success,
+      "data": filter,
+    });
+    return;
+  }
+
+  if (!reqData.fullName && !reqData.locationName && !reqData.email) {
     response.json({
       "status": constants.RESPONSE_TYPES.success,
       "data": arr,
     });
-  }, () => {
-    response.send({
-      "status": constants.RESPONSE_TYPES.fail,
-      "data": {},
+  }
+
+  if (reqData?.fullName) {
+    arr.filter((user) => {
+      if (
+        user.fullName.toLowerCase().includes(reqData.fullName.toLowerCase())
+      ) {
+        if (!filter.find((usr) => usr.id === user.id)) {
+          filter.push(user);
+        }
+      }
     });
+  }
+  if (reqData?.locationName) {
+    arr.filter((user) => {
+      if (
+        user.locationName.toLowerCase()
+            .includes(reqData.locationName.toLowerCase())
+      ) {
+        if (!filter.find((usr) => usr.id === user.id)) {
+          filter.push(user);
+        }
+      }
+    });
+  }
+  if (reqData?.email) {
+    arr.filter((user) => {
+      if (user.email.toLowerCase().includes(reqData.email.toLowerCase())) {
+        if (!filter.find((usr) => usr.id === user.id)) {
+          filter.push(user);
+        }
+      }
+    });
+  }
+
+  response.json({
+    "status": constants.RESPONSE_TYPES.success,
+    "data": filter,
   });
 });

@@ -2,10 +2,12 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const constants = require("../constants/constands");
 
-exports.updateUser = functions.https.onRequest((req, response) => {
+module.exports = functions.https.onRequest(async (req, response) => {
   const db = admin.firestore();
-  const usersRef = db.collection("users");
-
+  const reqData = req.body?.data;
+  const DBRef = db.collection(
+    reqData?.type === "objects" ? "objects" : "users",
+  );
   if (!Object.keys(req.body.data).length) {
     response.send({
       "status": constants.RESPONSE_TYPES.fail,
@@ -16,30 +18,25 @@ exports.updateUser = functions.https.onRequest((req, response) => {
     return;
   }
 
-  usersRef.where("id", "==", req.body.data.id).get().then((data) => {
-    const users = [];
-    data.forEach((doc) => users.push(doc.data()));
+  const user = (await DBRef.doc(req.body.data.id).get()).data();
 
-    if (!users.length) {
-      response.send({
-        "status": constants.RESPONSE_TYPES.fail,
-        "data": {},
-      });
-      return;
+  if (!user) {
+    response.send({"status": constants.RESPONSE_TYPES.fail, "data": "No user found"});
+    return;
+  }
+
+  const nonEmptyObj = {};
+  Object.keys(req.body.data).forEach((key) => {
+    if (req.body.data[key]) {
+      nonEmptyObj[key] = req.body.data[key];
     }
+  });
 
-    const editData = Object.assign(users[0], req.body.data, {});
+  const editData = Object.assign(user, nonEmptyObj);
 
-    usersRef.doc(req.body.data.id).set(editData).then(() => {
-      response.json({
-        "status": constants.RESPONSE_TYPES.success,
-        "data": {},
-      });
-    }, () => {
-      response.send({
-        "status": constants.RESPONSE_TYPES.fail,
-        "data": {},
-      });
-    });
+  DBRef.doc(req.body.data.id).set(editData).then(() => {
+    response.json({"status": constants.RESPONSE_TYPES.success, "data": editData});
+  }, () => {
+    response.send({"status": constants.RESPONSE_TYPES.fail, "data": {}});
   });
 });

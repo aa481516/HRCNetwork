@@ -2,9 +2,12 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const constants = require("../constants/constands");
 
-exports.getUser = functions.https.onRequest((req, response) => {
+module.exports = functions.https.onRequest(async (req, response) => {
   const db = admin.firestore();
+  const reqData = req.body?.data;
+
   const usersRef = db.collection("users");
+  const objectsRef = db.collection("objects");
 
   if (!req.body.data.id) {
     response.send({
@@ -13,20 +16,16 @@ exports.getUser = functions.https.onRequest((req, response) => {
     });
   }
 
-  usersRef.where("id", "==", req.body.data.id).get().then((snapshot) => {
-    const users = [];
-    snapshot.forEach((doc) => {
-      users.push(doc.data());
-    });
+  let data = (await usersRef.doc(reqData.id?.trim()).get()).data();
+  data.type = "user";
 
-    response.json({
-      "status": constants.RESPONSE_TYPES.success,
-      "data": users,
-    });
-  }, () => {
-    response.send({
-      "status": constants.RESPONSE_TYPES.fail,
-      "data": {},
-    });
+  if (!data) {
+    data = (await objectsRef.doc(reqData.id?.trim()).get()).data();
+    data.type = "Object";
+  }
+
+  response.json({
+    "status": constants.RESPONSE_TYPES.success,
+    "data": data,
   });
 });
